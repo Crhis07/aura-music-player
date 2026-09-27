@@ -1,0 +1,30 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.idea/
+.kotlin/
+.vscode/
+.DS_Store
+/build
+captures/
+.externalNativeBuild
+.cxx
+local.properties
+
+# Android build outputs
+app/build/
+build/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Java class files
+*.class
+
+# Log files
+*.log
+
+# Scratch / test files
+test_icon_preview.png

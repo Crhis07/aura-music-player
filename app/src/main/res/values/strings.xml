@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Aura Music</string>
+    <string name="channel_name">Reproducción Musical</string>
+    <string name="channel_description">Notificación para controlar la música activa</string>
+    <string name="permission_audio_rationale">Se necesita permiso para leer las canciones de tu teléfono.</string>
+</resources>
