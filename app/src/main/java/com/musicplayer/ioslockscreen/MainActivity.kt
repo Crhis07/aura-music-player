@@ -112,27 +112,38 @@ class MainActivity : ComponentActivity() {
                     onSeekTo = { posMs -> controller?.seekTo(posMs) },
                     onReloadLibrary = { loadSongs() },
                     onPlayPauseToggle = {
-                        controller?.let { player ->
-                            if (player.isPlaying) player.pause() else player.play()
+                        val player = MusicPlaybackService.instance?.player ?: controller
+                        player?.let { p ->
+                            if (p.isPlaying) {
+                                p.pause()
+                            } else {
+                                if (p.mediaItemCount == 0 && _currentSong.value != null) {
+                                    playSong(_currentSong.value!!)
+                                } else {
+                                    p.play()
+                                }
+                            }
                         }
                     },
                     onNext = {
-                        controller?.let { player ->
-                            if (player.hasNextMediaItem()) {
-                                player.seekToNextMediaItem()
-                            } else {
-                                player.seekTo(0, 0L)
+                        val player = MusicPlaybackService.instance?.player ?: controller
+                        player?.let { p ->
+                            if (p.hasNextMediaItem()) {
+                                p.seekToNextMediaItem()
+                            } else if (p.mediaItemCount > 0) {
+                                p.seekTo(0, 0L)
                             }
                         }
                     },
                     onPrevious = {
-                        controller?.let { player ->
-                            if (player.currentPosition > 3000L) {
-                                player.seekTo(0L)
-                            } else if (player.hasPreviousMediaItem()) {
-                                player.seekToPreviousMediaItem()
-                            } else {
-                                player.seekTo(player.mediaItemCount - 1, 0L)
+                        val player = MusicPlaybackService.instance?.player ?: controller
+                        player?.let { p ->
+                            if (p.currentPosition > 3000L) {
+                                p.seekTo(0L)
+                            } else if (p.hasPreviousMediaItem()) {
+                                p.seekToPreviousMediaItem()
+                            } else if (p.mediaItemCount > 0) {
+                                p.seekTo(p.mediaItemCount - 1, 0L)
                             }
                         }
                     },
@@ -176,10 +187,52 @@ class MainActivity : ComponentActivity() {
             _albums.value = library.albums
             _artists.value = library.artists
             _folders.value = library.folders
-            if (_currentSong.value == null && library.songs.isNotEmpty()) {
-                _currentSong.value = library.songs.first()
+            syncCurrentSongFromPlayer()
+        }
+    }
+
+    private fun syncCurrentSongFromPlayer() {
+        val player = MusicPlaybackService.instance?.player ?: controller ?: return
+        val currentItem = player.currentMediaItem
+        if (currentItem != null) {
+            val currentMediaId = currentItem.mediaId
+            val currentUri = currentItem.requestMetadata.mediaUri ?: currentItem.localConfiguration?.uri
+            val metadata = currentItem.mediaMetadata
+            val title = metadata.title?.toString() ?: ""
+            val artist = metadata.artist?.toString() ?: ""
+
+            val matchingSong = _songs.value.find {
+                (currentMediaId.isNotBlank() && it.id.toString() == currentMediaId) ||
+                (currentUri != null && currentUri != Uri.EMPTY && it.mediaUri == currentUri) ||
+                (title.isNotBlank() && it.title.equals(title, ignoreCase = true) && 
+                 (artist.isBlank() || it.artist.equals(artist, ignoreCase = true)))
+            }
+            if (matchingSong != null) {
+                val isFav = repository.isFavorite(matchingSong)
+                _currentSong.value = matchingSong.copy(isFavorite = isFav)
+            } else {
+                val songId = currentMediaId.toLongOrNull() ?: 0L
+                var isFav = if (songId > 0L) repository.isFavorite(songId) else false
+                if (!isFav) {
+                    isFav = repository.isFavoriteByMetadata(title, artist)
+                }
+                val duration = player.duration.coerceAtLeast(0L)
+
+                _currentSong.value = Song(
+                    id = songId,
+                    title = title.ifBlank { "Canción" },
+                    artist = artist.ifBlank { "Artista" },
+                    album = metadata.albumTitle?.toString() ?: "Álbum",
+                    durationMs = if (duration > 0) duration else 180000L,
+                    mediaUri = currentUri ?: Uri.EMPTY,
+                    albumArtUri = metadata.artworkUri,
+                    isFavorite = isFav
+                )
             }
         }
+        _isPlaying.value = player.isPlaying
+        _repeatMode.value = player.repeatMode
+        _isShuffleEnabled.value = player.shuffleModeEnabled
     }
 
     private fun updateSongMetadata(updatedSong: Song) {
@@ -228,6 +281,7 @@ class MainActivity : ComponentActivity() {
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     _isPlaying.value = isPlaying
+                    syncCurrentSongFromPlayer()
                 }
 
                 override fun onRepeatModeChanged(repeatMode: Int) {
@@ -239,20 +293,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    val currentUri = mediaItem?.requestMetadata?.mediaUri ?: mediaItem?.localConfiguration?.uri
-                    val currentMediaId = mediaItem?.mediaId
-                    val matchingSong = _songs.value.find {
-                        (currentMediaId != null && it.id.toString() == currentMediaId) ||
-                        (currentUri != null && it.mediaUri == currentUri)
-                    }
-                    if (matchingSong != null) {
-                        _currentSong.value = matchingSong
-                    }
+                    syncCurrentSongFromPlayer()
                 }
             })
-            _isPlaying.value = controller?.isPlaying ?: false
-            _repeatMode.value = controller?.repeatMode ?: Player.REPEAT_MODE_ALL
-            _isShuffleEnabled.value = controller?.shuffleModeEnabled ?: false
+            syncCurrentSongFromPlayer()
         }, MoreExecutors.directExecutor())
     }
 
@@ -277,7 +321,7 @@ class MainActivity : ComponentActivity() {
 
     private fun playPlaylist(playlist: List<Song>, shuffle: Boolean = false) {
         if (playlist.isEmpty()) return
-        val player = controller ?: MusicPlaybackService.instance?.player ?: return
+        val player = MusicPlaybackService.instance?.player ?: controller ?: return
 
         val actualList = if (shuffle) playlist.shuffled() else playlist
         val startSong = actualList.first()
@@ -290,20 +334,24 @@ class MainActivity : ComponentActivity() {
         if (shuffle) {
             player.shuffleModeEnabled = true
             _isShuffleEnabled.value = true
+        } else {
+            player.shuffleModeEnabled = false
+            _isShuffleEnabled.value = false
         }
         player.prepare()
         player.play()
     }
 
     private fun toggleSongFavorite(song: Song) {
-        val newFav = repository.toggleFavorite(song.id)
+        val newFav = repository.toggleFavorite(song)
         val list = _songs.value.toMutableList()
         val idx = list.indexOfFirst { it.id == song.id }
         if (idx >= 0) {
             list[idx] = list[idx].copy(isFavorite = newFav)
             _songs.value = list
         }
-        if (_currentSong.value?.id == song.id) {
+        if (_currentSong.value?.id == song.id ||
+            (_currentSong.value?.title == song.title && _currentSong.value?.artist == song.artist)) {
             _currentSong.value = _currentSong.value?.copy(isFavorite = newFav)
         }
     }
@@ -320,19 +368,65 @@ class MainActivity : ComponentActivity() {
             _songs.value = list
         }
 
-        val player = controller ?: MusicPlaybackService.instance?.player ?: return
+        val player = MusicPlaybackService.instance?.player ?: controller ?: return
         val songsList = _songs.value
-        val playIndex = if (targetIndex >= 0) targetIndex else 0
 
+        var foundInQueueIndex = -1
         if (player.mediaItemCount == songsList.size && player.mediaItemCount > 0) {
-            // Si la cola ya está cargada, saltar instantáneamente sin costo de serialización Binder
-            player.seekTo(playIndex, 0L)
+            if (targetIndex in 0 until player.mediaItemCount) {
+                val item = player.getMediaItemAt(targetIndex)
+                if (item.mediaId == song.id.toString() ||
+                    (item.mediaMetadata.title?.toString() == song.title && item.mediaMetadata.artist?.toString() == song.artist)
+                ) {
+                    foundInQueueIndex = targetIndex
+                }
+            }
+            if (foundInQueueIndex < 0) {
+                for (i in 0 until player.mediaItemCount) {
+                    val item = player.getMediaItemAt(i)
+                    if (item.mediaId == song.id.toString() ||
+                        (item.mediaMetadata.title?.toString() == song.title && item.mediaMetadata.artist?.toString() == song.artist)
+                    ) {
+                        foundInQueueIndex = i
+                        break
+                    }
+                }
+            }
+        }
+
+        if (foundInQueueIndex >= 0) {
+            player.seekTo(foundInQueueIndex, 0L)
             player.play()
         } else {
+            val playIndex = if (targetIndex >= 0) targetIndex else 0
             val mediaItems = songsList.map { it.toMediaItem() }
             player.setMediaItems(mediaItems, playIndex, 0L)
             player.prepare()
             player.play()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncCurrentSongFromPlayer()
+        if (_songs.value.isNotEmpty()) {
+            var changed = false
+            val updated = _songs.value.map { song ->
+                val fav = repository.isFavorite(song)
+                if (song.isFavorite != fav) {
+                    changed = true
+                    song.copy(isFavorite = fav)
+                } else song
+            }
+            if (changed) {
+                _songs.value = updated
+            }
+            _currentSong.value?.let { current ->
+                val fav = repository.isFavorite(current)
+                if (current.isFavorite != fav) {
+                    _currentSong.value = current.copy(isFavorite = fav)
+                }
+            }
         }
     }
 

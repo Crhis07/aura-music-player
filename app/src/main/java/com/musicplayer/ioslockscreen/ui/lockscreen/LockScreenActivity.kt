@@ -160,7 +160,7 @@ class LockScreenActivity : ComponentActivity() {
                 onToggleFavorite = {
                     currentSong?.let { song ->
                         val repo = MusicRepository(this@LockScreenActivity)
-                        val newFav = repo.toggleFavorite(song.id)
+                        val newFav = repo.toggleFavorite(song)
                         currentSongState.value = song.copy(isFavorite = newFav)
                     }
                 },
@@ -221,15 +221,23 @@ class LockScreenActivity : ComponentActivity() {
         val album = metadata.albumTitle?.toString() ?: "Álbum"
         val duration = player.duration.coerceAtLeast(0L)
         val mediaUri = item.requestMetadata.mediaUri ?: item.localConfiguration?.uri ?: Uri.EMPTY
+        val songId = item.mediaId.toLongOrNull() ?: 0L
+
+        val repository = MusicRepository(this@LockScreenActivity)
+        var isFav = if (songId > 0L) repository.isFavorite(songId) else false
+        if (!isFav) {
+            isFav = repository.isFavoriteByMetadata(title, artist)
+        }
 
         val song = Song(
-            id = item.mediaId.toLongOrNull() ?: 0L,
+            id = songId,
             title = title,
             artist = artist,
             album = album,
             durationMs = if (duration > 0) duration else 180000L,
             mediaUri = mediaUri,
-            albumArtUri = metadata.artworkUri
+            albumArtUri = metadata.artworkUri,
+            isFavorite = isFav
         )
         currentSongState.value = song
 
@@ -238,23 +246,7 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     private fun ensurePlaylistLoaded() {
-        val player = MusicPlaybackService.instance?.player ?: controller ?: return
-        // NUNCA sobreescribir la cola del reproductor si ya contiene un elemento activo
-        if (player.mediaItemCount == 0 && currentSongState.value == null) {
-            activityScope.launch(Dispatchers.IO) {
-                val repository = MusicRepository(this@LockScreenActivity)
-                val allSongs = repository.getLocalSongs()
-                if (allSongs.isNotEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        if (player.mediaItemCount == 0 && currentSongState.value == null) {
-                            val mediaItems = allSongs.map { it.toMediaItem() }
-                            player.setMediaItems(mediaItems, 0, 0L)
-                            player.prepare()
-                        }
-                    }
-                }
-            }
-        }
+        // No forzamos la sobreescritura de la lista con el índice 0 para no alterar la selección del usuario
     }
 
     private fun loadBitmapForSong(song: Song?, artUri: Uri?) {
@@ -379,6 +371,25 @@ class LockScreenActivity : ComponentActivity() {
         } else {
             dismissAction()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateCurrentSongFromPlayer()
+        val active = MusicPlaybackService.instance?.player ?: controller
+        isPlayingState.value = active?.isPlaying ?: false
+        repeatModeState.value = active?.repeatMode ?: Player.REPEAT_MODE_ALL
+        isShuffleEnabledState.value = active?.shuffleModeEnabled ?: false
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateCurrentSongFromPlayer()
+        val active = MusicPlaybackService.instance?.player ?: controller
+        isPlayingState.value = active?.isPlaying ?: false
+        repeatModeState.value = active?.repeatMode ?: Player.REPEAT_MODE_ALL
+        isShuffleEnabledState.value = active?.shuffleModeEnabled ?: false
     }
 
     override fun onDestroy() {

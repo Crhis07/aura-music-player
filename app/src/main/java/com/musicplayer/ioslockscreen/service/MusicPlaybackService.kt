@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
@@ -19,6 +20,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.musicplayer.ioslockscreen.MainActivity
 import com.musicplayer.ioslockscreen.R
 import com.musicplayer.ioslockscreen.ui.lockscreen.LockScreenActivity
@@ -53,7 +56,7 @@ class MusicPlaybackService : MediaSessionService() {
         val prefs = getSharedPreferences("player_playback_prefs", Context.MODE_PRIVATE)
         val savedRepeat = prefs.getInt("repeat_mode", Player.REPEAT_MODE_ALL)
         val savedShuffle = prefs.getBoolean("shuffle_mode", false)
-        val skipSilence = prefs.getBoolean("skip_silence", true)
+        val skipSilence = prefs.getBoolean("skip_silence", false)
 
         player = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
@@ -81,8 +84,35 @@ class MusicPlaybackService : MediaSessionService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val sessionCallback = object : MediaSession.Callback {
+            override fun onAddMediaItems(
+                mediaSession: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                mediaItems: List<MediaItem>
+            ): ListenableFuture<List<MediaItem>> {
+                val updatedMediaItems = mediaItems.map { item ->
+                    val resolvedUri = item.requestMetadata.mediaUri
+                        ?: item.localConfiguration?.uri
+                        ?: if (item.mediaId.isNotBlank()) Uri.parse(item.mediaId) else Uri.EMPTY
+
+                    item.buildUpon()
+                        .setUri(resolvedUri)
+                        .setMediaId(item.mediaId)
+                        .setMediaMetadata(item.mediaMetadata)
+                        .setRequestMetadata(
+                            item.requestMetadata.buildUpon()
+                                .setMediaUri(resolvedUri)
+                                .build()
+                        )
+                        .build()
+                }
+                return Futures.immediateFuture(updatedMediaItems)
+            }
+        }
+
         mediaSession = player?.let {
             MediaSession.Builder(this, it)
+                .setCallback(sessionCallback)
                 .setSessionActivity(sessionActivityPendingIntent)
                 .build()
         }

@@ -394,8 +394,9 @@ fun IOSLockScreenView(
                             if (currentSong != null) {
                                 IconButton(
                                     onClick = {
+                                        val willBeFav = !currentSong.isFavorite
                                         onToggleFavorite()
-                                        feedbackMessage = if (currentSong.isFavorite) "Eliminado de Favoritos" else "Añadido a Favoritos ❤️"
+                                        feedbackMessage = if (willBeFav) "Añadido a Favoritos ❤️" else "Eliminado de Favoritos"
                                     },
                                     modifier = Modifier.size(36.dp)
                                 ) {

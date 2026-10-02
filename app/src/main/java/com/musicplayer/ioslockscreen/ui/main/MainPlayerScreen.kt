@@ -1836,7 +1836,7 @@ fun SettingsTabContent(
 
         item {
             val playbackPrefs = remember { context.getSharedPreferences("player_playback_prefs", android.content.Context.MODE_PRIVATE) }
-            var skipSilence by remember { mutableStateOf(playbackPrefs.getBoolean("skip_silence", true)) }
+            var skipSilence by remember { mutableStateOf(playbackPrefs.getBoolean("skip_silence", false)) }
 
             Card(
                 shape = RoundedCornerShape(18.dp),

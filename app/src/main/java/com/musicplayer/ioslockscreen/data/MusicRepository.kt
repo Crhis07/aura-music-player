@@ -60,11 +60,60 @@ class MusicRepository(private val context: Context) {
         return current
     }
 
-    fun toggleFavorite(songId: Long): Boolean {
+    private fun getMetadataKey(title: String, artist: String): String {
+        return "fav_meta_${title.trim().lowercase()}_${artist.trim().lowercase()}"
+    }
+
+    fun isFavoriteByMetadata(title: String, artist: String): Boolean {
+        if (title.isBlank()) return false
+        val key = getMetadataKey(title, artist)
+        return prefs.getBoolean(key, false)
+    }
+
+    fun isFavorite(songId: Long): Boolean {
+        if (songId <= 0L) return false
         val key = "fav_$songId"
-        val current = prefs.getBoolean(key, false)
-        val newFav = !current
-        prefs.edit().putBoolean(key, newFav).apply()
+        if (prefs.contains(key)) {
+            return prefs.getBoolean(key, false)
+        }
+        return if (songId == 1001L) true else false
+    }
+
+    fun isFavorite(song: Song): Boolean {
+        if (song.id > 0L && prefs.contains("fav_${song.id}")) {
+            return prefs.getBoolean("fav_${song.id}", false)
+        }
+        if (isFavoriteByMetadata(song.title, song.artist)) {
+            return true
+        }
+        return if (song.id == 1001L) true else false
+    }
+
+    fun setFavorite(songId: Long, isFav: Boolean) {
+        val key = "fav_$songId"
+        prefs.edit().putBoolean(key, isFav).apply()
+    }
+
+    fun setFavorite(song: Song, isFav: Boolean) {
+        val editor = prefs.edit()
+        if (song.id > 0L) {
+            editor.putBoolean("fav_${song.id}", isFav)
+        }
+        if (song.title.isNotBlank()) {
+            editor.putBoolean(getMetadataKey(song.title, song.artist), isFav)
+        }
+        editor.apply()
+    }
+
+    fun toggleFavorite(songId: Long): Boolean {
+        val newFav = !isFavorite(songId)
+        setFavorite(songId, newFav)
+        return newFav
+    }
+
+    fun toggleFavorite(song: Song): Boolean {
+        val newFav = !isFavorite(song)
+        setFavorite(song, newFav)
         return newFav
     }
 
@@ -223,7 +272,7 @@ class MusicRepository(private val context: Context) {
                     val finalArtUri = if (!savedArt.isNullOrBlank()) Uri.parse(savedArt) else rawAlbumArtUri
 
                     val playCount = prefs.getInt("play_count_$id", 0)
-                    val isFav = prefs.getBoolean("fav_$id", false)
+                    val isFav = isFavorite(id) || isFavoriteByMetadata(savedTitle, savedArtist)
 
                     songsList.add(
                         Song(
@@ -269,7 +318,7 @@ class MusicRepository(private val context: Context) {
                 isDemo = true,
                 dateAdded = System.currentTimeMillis() / 1000 - 86400,
                 playCount = 18,
-                isFavorite = true
+                isFavorite = isFavorite(1001L)
             ),
             Song(
                 id = 1002L,
@@ -282,7 +331,7 @@ class MusicRepository(private val context: Context) {
                 isDemo = true,
                 dateAdded = System.currentTimeMillis() / 1000 - 3600,
                 playCount = 9,
-                isFavorite = false
+                isFavorite = isFavorite(1002L)
             ),
             Song(
                 id = 1003L,
@@ -295,7 +344,7 @@ class MusicRepository(private val context: Context) {
                 isDemo = true,
                 dateAdded = System.currentTimeMillis() / 1000 - 172800,
                 playCount = 3,
-                isFavorite = false
+                isFavorite = isFavorite(1003L)
             )
         )
     }
