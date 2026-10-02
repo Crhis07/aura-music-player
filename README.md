@@ -62,4 +62,4 @@ Descarga o transfiere el APK generado a tu teléfono:
 1. Abre **Android Studio**.
 2. Selecciona **Open** y navega a este repositorio.
 3. Conecta tu dispositivo Android (ej. Pixel 7) por cable o Wi-Fi Debugging.
-4. Presiona **Run ▶️** (`Shift + F10`).
+4. Presiona **Run ▶️** (`Shift + F10`). 
