@@ -479,6 +479,17 @@ class MainActivity : ComponentActivity() {
         if (AppUpdateManager.resumePendingInstallIfAllowed(this)) {
             _pendingUpdate.value = null
         }
+        val audioGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        }
+        if (_hasPermission.value != audioGranted) {
+            _hasPermission.value = audioGranted
+            if (audioGranted) {
+                loadSongs()
+            }
+        }
         syncCurrentSongFromPlayer()
         if (_songs.value.isNotEmpty()) {
             var changed = false

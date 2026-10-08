@@ -60,6 +60,11 @@ import com.musicplayer.ioslockscreen.model.MusicFolder
 import com.musicplayer.ioslockscreen.model.Song
 import android.widget.Toast
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.musicplayer.ioslockscreen.service.MusicPlaybackService
 import com.musicplayer.ioslockscreen.service.SleepTimerManager
 import com.musicplayer.ioslockscreen.ui.lockscreen.LockScreenActivity
@@ -306,7 +311,20 @@ fun MainPlayerScreen(
             }
         }
     ) { innerPadding ->
-        Box(
+        val pullRefreshScope = rememberCoroutineScope()
+        var isPullRefreshing by remember { mutableStateOf(false) }
+
+        @OptIn(ExperimentalMaterial3Api::class)
+        PullToRefreshBox(
+            isRefreshing = isPullRefreshing,
+            onRefresh = {
+                isPullRefreshing = true
+                pullRefreshScope.launch {
+                    onReloadLibrary()
+                    delay(600)
+                    isPullRefreshing = false
+                }
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -1477,10 +1495,21 @@ fun SettingsTabContent(
                 )
             }
 
-            // Actualizar estado del permiso al volver a la app
-            DisposableEffect(Unit) {
-                hasOverlayPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(context) else true
-                onDispose {}
+            // Actualizar estado del permiso inmediatamente al volver de Ajustes
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        hasOverlayPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            Settings.canDrawOverlays(context)
+                        } else true
+                        isLockScreenEnabled = MusicPlaybackService.isLockScreenEnabled(context)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
             }
 
             Card(
