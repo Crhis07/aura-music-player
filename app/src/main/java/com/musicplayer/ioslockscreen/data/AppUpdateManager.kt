@@ -98,7 +98,7 @@ object AppUpdateManager {
                 }
             }
 
-            val url = URL(VERSION_JSON_URL)
+            val url = URL("$VERSION_JSON_URL?t=${System.currentTimeMillis()}")
             val connection = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 7000
