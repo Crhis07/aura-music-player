@@ -1,7 +1,7 @@
 {
   "versionCode": 2,
-  "versionName": "1.1.0",
-  "downloadUrl": "https://github.com/Crhis07/aura-music-player/releases/download/v1.1.0/app-debug.apk",
+  "versionName": "1.0.1",
+  "downloadUrl": "https://github.com/Crhis07/aura-music-player/releases/download/v1.0.1/app-debug.apk",
   "changelog": "• Pantalla de bloqueo con carátula ampliada en alta resolución.\n• Títulos y artistas con marquesina en movimiento continuo.\n• Apertura automática al bloquear/apagar la pantalla con permiso de superposición.",
   "forceUpdate": false
 }
