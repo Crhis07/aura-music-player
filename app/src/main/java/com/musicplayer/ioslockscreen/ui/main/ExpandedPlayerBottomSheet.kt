@@ -43,6 +43,7 @@ import com.musicplayer.ioslockscreen.data.LyricsResult
 import com.musicplayer.ioslockscreen.data.MusicMetadataSearchService
 import com.musicplayer.ioslockscreen.model.Song
 import com.musicplayer.ioslockscreen.ui.lockscreen.LockScreenActivity
+import android.widget.Toast
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +71,9 @@ fun ExpandedPlayerBottomSheet(
     var isLyricsExpanded by remember { mutableStateOf(false) }
     var isSearchingLyrics by remember(currentSong.id) { mutableStateOf(false) }
     var searchLyricsError by remember(currentSong.id) { mutableStateOf<String?>(null) }
+    var showEditLyricsDialog by remember { mutableStateOf(false) }
+    var isCustomSearchingLyrics by remember { mutableStateOf(false) }
+    var customSearchLyricsError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(currentSong.id) {
         isSearchingLyrics = false
@@ -347,6 +351,10 @@ fun ExpandedPlayerBottomSheet(
                 isSearching = isSearchingLyrics,
                 errorMessage = searchLyricsError,
                 onToggleExpand = { isLyricsExpanded = !isLyricsExpanded },
+                onOpenEditDialog = {
+                    customSearchLyricsError = null
+                    showEditLyricsDialog = true
+                },
                 onSearchOnline = {
                     coroutineScope.launch {
                         isSearchingLyrics = true
@@ -373,6 +381,44 @@ fun ExpandedPlayerBottomSheet(
                 }
             )
 
+            // Modal para editar, re-buscar o ingresar letra manualmente
+            if (showEditLyricsDialog) {
+                EditLyricsDialog(
+                    song = currentSong,
+                    currentLyrics = lyricsResult,
+                    isSearching = isCustomSearchingLyrics,
+                    searchError = customSearchLyricsError,
+                    onDismiss = { showEditLyricsDialog = false },
+                    onSearchWithQuery = { customTitle, customArtist ->
+                        coroutineScope.launch {
+                            isCustomSearchingLyrics = true
+                            customSearchLyricsError = null
+                            val result = LyricsHelper.searchOnlineLyricsCustom(context, currentSong, customTitle, customArtist)
+                            isCustomSearchingLyrics = false
+                            if (result.hasLyrics) {
+                                lyricsResult = result
+                                showEditLyricsDialog = false
+                                Toast.makeText(context, "¡Letra encontrada y guardada!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                customSearchLyricsError = "No se encontró letra para '$customTitle' de '$customArtist' en LRCLIB."
+                            }
+                        }
+                    },
+                    onSaveManualLyrics = { text ->
+                        val result = LyricsHelper.saveCustomLyrics(context, currentSong, text)
+                        lyricsResult = result
+                        showEditLyricsDialog = false
+                        Toast.makeText(context, "Letra guardada correctamente", Toast.LENGTH_SHORT).show()
+                    },
+                    onDeleteLyrics = {
+                        LyricsHelper.deleteCachedLyrics(context, currentSong)
+                        lyricsResult = LyricsResult(isSynced = false, lines = emptyList(), hasLyrics = false)
+                        showEditLyricsDialog = false
+                        Toast.makeText(context, "Letra eliminada", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
             Spacer(modifier = Modifier.height(36.dp))
         }
     }
@@ -389,6 +435,7 @@ fun SpotifyLyricsCard(
     isSearching: Boolean,
     errorMessage: String?,
     onToggleExpand: () -> Unit,
+    onOpenEditDialog: () -> Unit,
     onSearchOnline: () -> Unit
 ) {
     Card(
@@ -411,7 +458,10 @@ fun SpotifyLyricsCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable(onClick = onToggleExpand)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Lyrics,
                         contentDescription = "Letras",
@@ -428,6 +478,21 @@ fun SpotifyLyricsCard(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Botón para editar / buscar de nuevo
+                    IconButton(
+                        onClick = onOpenEditDialog,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Editar o buscar de nuevo",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     Text(
                         text = if (isExpanded) "Reducir" else "Ampliar",
                         fontSize = 12.sp,
@@ -502,27 +567,42 @@ fun SpotifyLyricsCard(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Indicador de procedencia / offline
+                    // Indicador de procedencia / offline y botón para cambiar
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = if (lyricsResult.source == "cache" || lyricsResult.source == "online") Icons.Default.CloudDone else Icons.Default.Storage,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            text = when (lyricsResult.source) {
-                                "cache" -> "Guardada en el teléfono (Offline)"
-                                "online" -> "Descargada de LRCLIB (Guardada offline)"
-                                "demo" -> "Demostración sincronizada"
-                                else -> "Archivo local (.lrc)"
-                            },
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (lyricsResult.source == "cache" || lyricsResult.source == "online") Icons.Default.CloudDone else Icons.Default.Storage,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = when (lyricsResult.source) {
+                                    "cache" -> "Guardada offline"
+                                    "online" -> "Descargada de LRCLIB"
+                                    "demo" -> "Demostración sincronizada"
+                                    else -> "Archivo local (.lrc)"
+                                },
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        TextButton(
+                            onClick = onOpenEditDialog,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Cambiar letra", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
 
@@ -540,22 +620,37 @@ fun SpotifyLyricsCard(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDone,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            text = if (lyricsResult.source == "cache" || lyricsResult.source == "online")
-                                "Texto guardado en el teléfono (Offline)"
-                            else
-                                "Archivo local (.txt)",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDone,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Text(
+                                text = if (lyricsResult.source == "cache" || lyricsResult.source == "online")
+                                    "Texto guardado offline"
+                                else
+                                    "Archivo local (.txt)",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        TextButton(
+                            onClick = onOpenEditDialog,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Cambiar letra", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
 
@@ -622,28 +717,281 @@ fun SpotifyLyricsCard(
                                 )
                             }
                         } else {
-                            Button(
-                                onClick = onSearchOnline,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary
-                                ),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                modifier = Modifier.padding(top = 4.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudDownload,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Buscar Letra en Línea",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Button(
+                                    onClick = onSearchOnline,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Buscar en Línea",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = onOpenEditDialog,
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Personalizar",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Diálogo modal para buscar letras con términos personalizados, escribir/pegar texto o eliminarlas
+ */
+@Composable
+fun EditLyricsDialog(
+    song: Song,
+    currentLyrics: LyricsResult?,
+    isSearching: Boolean,
+    searchError: String?,
+    onDismiss: () -> Unit,
+    onSearchWithQuery: (title: String, artist: String) -> Unit,
+    onSaveManualLyrics: (text: String) -> Unit,
+    onDeleteLyrics: () -> Unit
+) {
+    var searchTitle by remember(song.id) {
+        mutableStateOf(
+            song.title.replace(Regex("""\.(mp3|flac|wav|m4a|aac|ogg|wma)$""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""\(.*?\)|\{.*?\}|\[.*?\]"""), "").trim()
+        )
+    }
+    var searchArtist by remember(song.id) {
+        mutableStateOf(
+            if (song.artist.contains("Desconocido", true) || song.artist.contains("Unknown", true)) "" else song.artist.trim()
+        )
+    }
+    var manualText by remember(song.id, currentLyrics) {
+        mutableStateOf(
+            if (currentLyrics?.isSynced == true && currentLyrics.lines.isNotEmpty()) {
+                currentLyrics.lines.joinToString("\n") { it.text }
+            } else {
+                currentLyrics?.plainText ?: ""
+            }
+        )
+    }
+    var selectedTab by remember { mutableStateOf(0) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Letras de Canción",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Cerrar", modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Selector de modo: Buscar en LRCLIB vs Manual
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(4.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (selectedTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedTab = 0 }
+                    ) {
+                        Text(
+                            text = "Buscar en LRCLIB",
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (selectedTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { selectedTab = 1 }
+                    ) {
+                        Text(
+                            text = "Escribir / Pegar",
+                            fontSize = 12.sp,
+                            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (selectedTab == 0) {
+                    Text(
+                        text = "Edita el título o artista para corregir la búsqueda en línea:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = searchTitle,
+                        onValueChange = { searchTitle = it },
+                        label = { Text("Título de la canción") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = searchArtist,
+                        onValueChange = { searchArtist = it },
+                        label = { Text("Nombre del artista") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (searchError != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = searchError,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = { onSearchWithQuery(searchTitle, searchArtist) },
+                        enabled = !isSearching && searchTitle.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (isSearching) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Buscando en LRCLIB...", fontSize = 13.sp)
+                        } else {
+                            Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Buscar y Guardar Letra", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Pega o edita el texto de la letra. Si incluye formato [.lrc], se sincronizará automáticamente:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = manualText,
+                        onValueChange = { manualText = it },
+                        placeholder = { Text("Escribe o pega aquí la letra...") },
+                        minLines = 4,
+                        maxLines = 7,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = { onSaveManualLyrics(manualText) },
+                        enabled = manualText.isNotBlank(),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Guardar Letra", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (currentLyrics?.hasLyrics == true) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = onDeleteLyrics,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Eliminar Letra Guardada", fontSize = 12.sp)
                     }
                 }
             }

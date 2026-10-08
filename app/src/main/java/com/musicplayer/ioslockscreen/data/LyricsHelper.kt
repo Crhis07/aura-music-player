@@ -132,6 +132,54 @@ object LyricsHelper {
         return@withContext fetchLyricsFromOnline(context, song)
     }
 
+    suspend fun searchOnlineLyricsCustom(
+        context: Context,
+        song: Song,
+        customTitle: String,
+        customArtist: String
+    ): LyricsResult = withContext(Dispatchers.IO) {
+        if (MusicMetadataSearchService.isOnlineSearchDisabled(context)) {
+            return@withContext LyricsResult(isSynced = false, lines = emptyList(), hasLyrics = false)
+        }
+        if (MusicMetadataSearchService.isWifiOnly(context) && MusicMetadataSearchService.isMeteredConnection(context)) {
+            return@withContext LyricsResult(isSynced = false, lines = emptyList(), hasLyrics = false)
+        }
+        val tempSong = song.copy(
+            title = customTitle.ifBlank { song.title },
+            artist = customArtist.ifBlank { song.artist }
+        )
+        return@withContext fetchLyricsFromOnline(context, tempSong)
+    }
+
+    fun deleteCachedLyrics(context: Context, song: Song): Boolean {
+        val cacheDir = File(context.filesDir, "lyrics")
+        var deleted = false
+        if (cacheDir.exists()) {
+            val cachedLrc = File(cacheDir, "lyrics_${song.id}.lrc")
+            if (cachedLrc.exists() && cachedLrc.delete()) deleted = true
+            val cachedTxt = File(cacheDir, "lyrics_${song.id}.txt")
+            if (cachedTxt.exists() && cachedTxt.delete()) deleted = true
+        }
+        return deleted
+    }
+
+    fun saveCustomLyrics(context: Context, song: Song, text: String): LyricsResult {
+        val clean = text.trim()
+        val cacheDir = File(context.filesDir, "lyrics")
+        if (!cacheDir.exists()) cacheDir.mkdirs()
+
+        deleteCachedLyrics(context, song)
+
+        val parsed = parseLrc(clean)
+        return if (parsed.isNotEmpty()) {
+            File(cacheDir, "lyrics_${song.id}.lrc").writeText(clean)
+            LyricsResult(isSynced = true, lines = parsed, hasLyrics = true, source = "cache")
+        } else {
+            File(cacheDir, "lyrics_${song.id}.txt").writeText(clean)
+            LyricsResult(isSynced = false, lines = emptyList(), plainText = clean, hasLyrics = true, source = "cache")
+        }
+    }
+
     private fun fetchLyricsFromOnline(context: Context, song: Song): LyricsResult {
         try {
             val baseTitle = song.title
