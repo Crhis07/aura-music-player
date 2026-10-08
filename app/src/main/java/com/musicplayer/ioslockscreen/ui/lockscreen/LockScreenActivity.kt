@@ -42,10 +42,27 @@ class LockScreenActivity : ComponentActivity() {
 
     private val activityScope = CoroutineScope(Dispatchers.Main + Job())
 
+    companion object {
+        var isActivityRunning: Boolean = false
+    }
+
     private var playerListener: Player.Listener? = null
+
+    override fun onStart() {
+        super.onStart()
+        isActivityRunning = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) {
+            isActivityRunning = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        isActivityRunning = true
 
         // Pre-cargar instancia del reproductor local si ya está activo
         val localPlayer = MusicPlaybackService.instance?.player
@@ -63,13 +80,16 @@ class LockScreenActivity : ComponentActivity() {
             overridePendingTransition(0, 0)
         }
 
-        // Mostrar sobre la pantalla de bloqueo (sin forzar el encendido ante notificaciones)
+        // Mostrar sobre la pantalla de bloqueo de forma nativa e inmediata
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+            setTurnScreenOn(false)
         }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        )
 
         // Diseño inmersivo total Edge-to-Edge extendido hasta el corte de la cámara (Display Cutout)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -310,10 +330,10 @@ class LockScreenActivity : ComponentActivity() {
                 }
             }
 
-            // 4. Último recurso: Miniatura del sistema Android
+            // 4. Último recurso: Miniatura del sistema Android en alta resolución
             if (bmp == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && song != null && song.mediaUri != Uri.EMPTY) {
                 try {
-                    bmp = contentResolver.loadThumbnail(song.mediaUri, Size(800, 800), null)
+                    bmp = contentResolver.loadThumbnail(song.mediaUri, Size(1200, 1200), null)
                 } catch (e: Exception) {
                     // Ignorar fallback
                 }
@@ -393,6 +413,7 @@ class LockScreenActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        isActivityRunning = false
         playerListener?.let { l ->
             MusicPlaybackService.instance?.player?.removeListener(l)
             controller?.removeListener(l)

@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -235,28 +236,28 @@ fun IOSLockScreenView(
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.74f)
-                            .widthIn(max = 295.dp)
+                            .fillMaxWidth(0.88f)
+                            .widthIn(max = 355.dp)
                             .aspectRatio(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Halo de profundidad ambiental
+                        // Halo de profundidad ambiental estilo iOS 16
                         Box(
                             modifier = Modifier
-                                .fillMaxSize(0.94f)
+                                .fillMaxSize(0.96f)
                                 .shadow(
-                                    elevation = 28.dp,
-                                    shape = RoundedCornerShape(26.dp),
-                                    ambientColor = Color.Black.copy(alpha = 0.6f),
-                                    spotColor = Color.Black.copy(alpha = 0.8f)
+                                    elevation = 32.dp,
+                                    shape = RoundedCornerShape(28.dp),
+                                    ambientColor = Color.Black.copy(alpha = 0.65f),
+                                    spotColor = Color.Black.copy(alpha = 0.85f)
                                 )
                         )
 
-                        // Tarjeta de la carátula con bisel y anti-aliasing
+                        // Tarjeta de la carátula con bisel y anti-aliasing de máxima nitidez
                         Surface(
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(28.dp),
                             color = Color.Black.copy(alpha = 0.4f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clickable { isCoverExpanded = false }
@@ -368,7 +369,9 @@ fun IOSLockScreenView(
 
                             Column(
                                 horizontalAlignment = if (isCoverExpanded) Alignment.CenterHorizontally else Alignment.Start,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 4.dp)
                             ) {
                                 Text(
                                     text = currentSong?.title ?: "Sin reproducir",
@@ -376,18 +379,34 @@ fun IOSLockScreenView(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = if (isCoverExpanded) TextAlign.Center else TextAlign.Start
+                                    overflow = TextOverflow.Clip,
+                                    textAlign = if (isCoverExpanded) TextAlign.Center else TextAlign.Start,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .basicMarquee(
+                                            iterations = Int.MAX_VALUE,
+                                            repeatDelayMillis = 1200,
+                                            initialDelayMillis = 2000,
+                                            velocity = 32.dp
+                                        )
                                 )
                                 Text(
-                                    text = "${currentSong?.artist ?: "Selecciona una pista"} — ${currentSong?.album ?: ""}",
+                                    text = "${currentSong?.artist ?: "Selecciona una pista"}${if (!currentSong?.album.isNullOrBlank()) " — " + currentSong?.album else ""}",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Normal,
                                     color = Color.White.copy(alpha = 0.72f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
                                     textAlign = if (isCoverExpanded) TextAlign.Center else TextAlign.Start,
-                                    modifier = Modifier.padding(top = 2.dp)
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 2.dp)
+                                        .basicMarquee(
+                                            iterations = Int.MAX_VALUE,
+                                            repeatDelayMillis = 1200,
+                                            initialDelayMillis = 2500,
+                                            velocity = 28.dp
+                                        )
                                 )
                             }
 

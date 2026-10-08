@@ -41,11 +41,23 @@ class MusicPlaybackService : MediaSessionService() {
         const val NOTIFICATION_ID = 101
         var isLockScreenEnabled: Boolean = true
         var instance: MusicPlaybackService? = null
+
+        fun setLockScreenEnabled(context: Context, enabled: Boolean) {
+            isLockScreenEnabled = enabled
+            val prefs = context.getSharedPreferences("player_playback_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("lock_screen_enabled", enabled).apply()
+        }
+
+        fun isLockScreenEnabled(context: Context): Boolean {
+            val prefs = context.getSharedPreferences("player_playback_prefs", Context.MODE_PRIVATE)
+            return prefs.getBoolean("lock_screen_enabled", true)
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
         instance = this
+        isLockScreenEnabled = isLockScreenEnabled(this)
         createNotificationChannel()
 
         val audioAttributes = AudioAttributes.Builder()
@@ -155,35 +167,49 @@ class MusicPlaybackService : MediaSessionService() {
     private fun setupScreenListener() {
         screenReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == Intent.ACTION_SCREEN_ON && isLockScreenEnabled) {
-                    val ctx = context ?: return
-                    val km = ctx.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-                    val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                    val isLocked = km?.isKeyguardLocked == true
-                    val isInteractive = pm?.isInteractive == true
+                val action = intent?.action ?: return
+                if (!isLockScreenEnabled) return
 
-                    // Solo abrir si el usuario encendió la pantalla interactivamente (no pulso ambiental de notificación),
-                    // la música está reproduciéndose activamente y el dispositivo está bloqueado
-                    player?.let { p ->
-                        if (p.isPlaying && isLocked && isInteractive) {
-                            launchIOSLockScreen()
-                        }
-                    }
+                val ctx = context ?: return
+                val p = player ?: return
+
+                // Debe haber música en la cola (reproduciéndose o lista en pausa activa)
+                val hasActiveTrack = p.mediaItemCount > 0 && (p.isPlaying || p.playbackState == Player.STATE_READY)
+                if (!hasActiveTrack) return
+
+                val km = ctx.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                val isLocked = km?.isKeyguardLocked == true || action == Intent.ACTION_SCREEN_OFF
+
+                if (isLocked && !LockScreenActivity.isActivityRunning) {
+                    launchIOSLockScreen()
                 }
             }
         }
 
         val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
         }
-        registerReceiver(screenReceiver, filter)
+        try {
+            registerReceiver(screenReceiver, filter)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun launchIOSLockScreen() {
-        val lockIntent = Intent(this, LockScreenActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        try {
+            val lockIntent = Intent(this, LockScreenActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+            startActivity(lockIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        startActivity(lockIntent)
     }
 
     private fun createNotificationChannel() {
