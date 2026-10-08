@@ -49,6 +49,8 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import coil.size.Precision
 import com.musicplayer.ioslockscreen.R
+import com.musicplayer.ioslockscreen.data.AppUpdateInfo
+import com.musicplayer.ioslockscreen.data.AppUpdateManager
 import com.musicplayer.ioslockscreen.data.LyricsHelper
 import com.musicplayer.ioslockscreen.data.MusicMetadataSearchService
 import com.musicplayer.ioslockscreen.data.MusicRepository
@@ -56,6 +58,8 @@ import com.musicplayer.ioslockscreen.model.Album
 import com.musicplayer.ioslockscreen.model.Artist
 import com.musicplayer.ioslockscreen.model.MusicFolder
 import com.musicplayer.ioslockscreen.model.Song
+import android.widget.Toast
+import kotlinx.coroutines.launch
 import com.musicplayer.ioslockscreen.service.MusicPlaybackService
 import com.musicplayer.ioslockscreen.service.SleepTimerManager
 import com.musicplayer.ioslockscreen.ui.lockscreen.LockScreenActivity
@@ -101,7 +105,8 @@ fun MainPlayerScreen(
     onPrevious: () -> Unit,
     onToggleRepeat: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
-    onPlayPlaylist: (List<Song>, Boolean) -> Unit = { _, _ -> }
+    onPlayPlaylist: (List<Song>, Boolean) -> Unit = { _, _ -> },
+    onTriggerUpdateDialog: (AppUpdateInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(LibraryTab.TRACKS) }
@@ -367,7 +372,8 @@ fun MainPlayerScreen(
                         onTestLockScreen = {
                             val intent = Intent(context, LockScreenActivity::class.java)
                             context.startActivity(intent)
-                        }
+                        },
+                        onTriggerUpdateDialog = onTriggerUpdateDialog
                     )
                 }
             }
@@ -1322,9 +1328,15 @@ fun SettingsTabContent(
     onOpenSleepTimerDialog: () -> Unit,
     onCancelSleepTimer: () -> Unit,
     onReloadLibrary: () -> Unit = {},
-    onTestLockScreen: () -> Unit
+    onTestLockScreen: () -> Unit,
+    onTriggerUpdateDialog: (AppUpdateInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val currentVersionName = remember { AppUpdateManager.getCurrentVersionName(context) }
+    val currentVersionCode = remember { AppUpdateManager.getCurrentVersionCode(context) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateCheckStatus by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -2144,10 +2156,10 @@ fun SettingsTabContent(
             }
         }
 
-        // SECCIÓN 6: ACERCA DE
+        // SECCIÓN 6: ACERCA DE Y ACTUALIZACIONES
         item {
             Text(
-                text = "Acerca de la Aplicación",
+                text = "Acerca de la Aplicación y Actualizaciones",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -2164,14 +2176,87 @@ fun SettingsTabContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Aura Music Player", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Versión 2.0.0 • Motor Ultra-Rápido 120 FPS", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Aura Music Player", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(
+                                "Versión $currentVersionName (Compilación $currentVersionCode)",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                     Text(
                         "Reproductor de música de alta fidelidad con AndroidX Media3 (ExoPlayer). Incluye clasificador de Álbumes y Artistas estilo BlackPlayer, selector de vista compacta/nítida, Editor de Metadatos con carátulas HD y Pantalla de Bloqueo inmersiva con fondos dinámicos Palette.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Botón para Comprobar Actualizaciones
+                    OutlinedButton(
+                        onClick = {
+                            if (!isCheckingUpdate) {
+                                isCheckingUpdate = true
+                                updateCheckStatus = null
+                                coroutineScope.launch {
+                                    val result = AppUpdateManager.checkUpdate(context, isManualCheck = true)
+                                    isCheckingUpdate = false
+                                    result.onSuccess { info ->
+                                        if (info.hasUpdate) {
+                                            updateCheckStatus = "¡Nueva versión v${info.versionName} disponible!"
+                                            onTriggerUpdateDialog(info)
+                                        } else {
+                                            updateCheckStatus = "Tu app está al día (v$currentVersionName)"
+                                            Toast.makeText(context, "¡Tienes la última versión!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }.onFailure { err ->
+                                        val msg = err.localizedMessage ?: "Error de conexión"
+                                        updateCheckStatus = "No se pudo verificar: $msg"
+                                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Comprobando actualizaciones...", fontSize = 13.sp)
+                        } else {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Buscar Actualizaciones", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    updateCheckStatus?.let { status ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = status,
+                            fontSize = 11.sp,
+                            color = if (status.startsWith("No")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
                 }
             }
         }

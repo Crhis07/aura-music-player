@@ -28,6 +28,12 @@ import com.musicplayer.ioslockscreen.model.toMediaItem
 import com.musicplayer.ioslockscreen.service.MusicPlaybackService
 import com.musicplayer.ioslockscreen.ui.main.MainPlayerScreen
 import com.musicplayer.ioslockscreen.ui.theme.IOSMusicPlayerTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import com.musicplayer.ioslockscreen.data.AppUpdateInfo
+import com.musicplayer.ioslockscreen.data.AppUpdateManager
+import com.musicplayer.ioslockscreen.ui.components.UpdateDialog
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +56,11 @@ class MainActivity : ComponentActivity() {
     private val _isShuffleEnabled = MutableStateFlow(false)
     private val _currentPosition = MutableStateFlow(0L)
     private val _hasPermission = MutableStateFlow(false)
+
+    private val _pendingUpdate = MutableStateFlow<AppUpdateInfo?>(null)
+    private val _isDownloadingUpdate = MutableStateFlow(false)
+    private val _downloadProgress = MutableStateFlow(0f)
+    private val _downloadError = MutableStateFlow<String?>(null)
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -81,6 +92,17 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Verificación silenciosa de actualización en segundo plano
+        lifecycleScope.launch {
+            delay(2500)
+            val result = AppUpdateManager.checkUpdate(this@MainActivity, isManualCheck = false)
+            result.onSuccess { info ->
+                if (info.hasUpdate) {
+                    _pendingUpdate.value = info
+                }
+            }
+        }
+
         setContent {
             IOSMusicPlayerTheme {
                 val songs = _songs.asStateFlow().collectAsState().value
@@ -94,63 +116,109 @@ class MainActivity : ComponentActivity() {
                 val currentPos = _currentPosition.asStateFlow().collectAsState().value
                 val hasPerm = _hasPermission.asStateFlow().collectAsState().value
 
-                MainPlayerScreen(
-                    songs = songs,
-                    albums = albums,
-                    artists = artists,
-                    folders = folders,
-                    currentSong = currentSong,
-                    isPlaying = isPlaying,
-                    repeatMode = repeatMode,
-                    isShuffleEnabled = isShuffle,
-                    currentPositionMs = currentPos,
-                    hasPermission = hasPerm,
-                    onRequestPermission = { checkAndRequestPermissions() },
-                    onSongSelected = { song -> playSong(song) },
-                    onToggleFavorite = { song -> toggleSongFavorite(song) },
-                    onUpdateSongMetadata = { updatedSong -> updateSongMetadata(updatedSong) },
-                    onSeekTo = { posMs -> controller?.seekTo(posMs) },
-                    onReloadLibrary = { loadSongs() },
-                    onPlayPauseToggle = {
-                        val player = MusicPlaybackService.instance?.player ?: controller
-                        player?.let { p ->
-                            if (p.isPlaying) {
-                                p.pause()
-                            } else {
-                                if (p.mediaItemCount == 0 && _currentSong.value != null) {
-                                    playSong(_currentSong.value!!)
+                val pendingUpdate = _pendingUpdate.asStateFlow().collectAsState().value
+                val isDownloading = _isDownloadingUpdate.asStateFlow().collectAsState().value
+                val downloadProgress = _downloadProgress.asStateFlow().collectAsState().value
+                val downloadError = _downloadError.asStateFlow().collectAsState().value
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    MainPlayerScreen(
+                        songs = songs,
+                        albums = albums,
+                        artists = artists,
+                        folders = folders,
+                        currentSong = currentSong,
+                        isPlaying = isPlaying,
+                        repeatMode = repeatMode,
+                        isShuffleEnabled = isShuffle,
+                        currentPositionMs = currentPos,
+                        hasPermission = hasPerm,
+                        onRequestPermission = { checkAndRequestPermissions() },
+                        onSongSelected = { song -> playSong(song) },
+                        onToggleFavorite = { song -> toggleSongFavorite(song) },
+                        onUpdateSongMetadata = { updatedSong -> updateSongMetadata(updatedSong) },
+                        onSeekTo = { posMs -> controller?.seekTo(posMs) },
+                        onReloadLibrary = { loadSongs() },
+                        onPlayPauseToggle = {
+                            val player = MusicPlaybackService.instance?.player ?: controller
+                            player?.let { p ->
+                                if (p.isPlaying) {
+                                    p.pause()
                                 } else {
-                                    p.play()
+                                    if (p.mediaItemCount == 0 && _currentSong.value != null) {
+                                        playSong(_currentSong.value!!)
+                                    } else {
+                                        p.play()
+                                    }
                                 }
                             }
-                        }
-                    },
-                    onNext = {
-                        val player = MusicPlaybackService.instance?.player ?: controller
-                        player?.let { p ->
-                            if (p.hasNextMediaItem()) {
-                                p.seekToNextMediaItem()
-                            } else if (p.mediaItemCount > 0) {
-                                p.seekTo(0, 0L)
+                        },
+                        onNext = {
+                            val player = MusicPlaybackService.instance?.player ?: controller
+                            player?.let { p ->
+                                if (p.hasNextMediaItem()) {
+                                    p.seekToNextMediaItem()
+                                } else if (p.mediaItemCount > 0) {
+                                    p.seekTo(0, 0L)
+                                }
                             }
-                        }
-                    },
-                    onPrevious = {
-                        val player = MusicPlaybackService.instance?.player ?: controller
-                        player?.let { p ->
-                            if (p.currentPosition > 3000L) {
-                                p.seekTo(0L)
-                            } else if (p.hasPreviousMediaItem()) {
-                                p.seekToPreviousMediaItem()
-                            } else if (p.mediaItemCount > 0) {
-                                p.seekTo(p.mediaItemCount - 1, 0L)
+                        },
+                        onPrevious = {
+                            val player = MusicPlaybackService.instance?.player ?: controller
+                            player?.let { p ->
+                                if (p.currentPosition > 3000L) {
+                                    p.seekTo(0L)
+                                } else if (p.hasPreviousMediaItem()) {
+                                    p.seekToPreviousMediaItem()
+                                } else if (p.mediaItemCount > 0) {
+                                    p.seekTo(p.mediaItemCount - 1, 0L)
+                                }
                             }
+                        },
+                        onToggleRepeat = { toggleRepeatMode() },
+                        onToggleShuffle = { toggleShuffleMode() },
+                        onPlayPlaylist = { playlist, shuffle -> playPlaylist(playlist, shuffle) },
+                        onTriggerUpdateDialog = { info ->
+                            _downloadError.value = null
+                            _pendingUpdate.value = info
                         }
-                    },
-                    onToggleRepeat = { toggleRepeatMode() },
-                    onToggleShuffle = { toggleShuffleMode() },
-                    onPlayPlaylist = { playlist, shuffle -> playPlaylist(playlist, shuffle) }
-                )
+                    )
+
+                    pendingUpdate?.let { updateInfo ->
+                        UpdateDialog(
+                            updateInfo = updateInfo,
+                            onDismiss = {
+                                if (!isDownloading) {
+                                    AppUpdateManager.dismissVersion(this@MainActivity, updateInfo.versionCode)
+                                    _pendingUpdate.value = null
+                                }
+                            },
+                            onStartDownload = {
+                                _isDownloadingUpdate.value = true
+                                _downloadError.value = null
+                                _downloadProgress.value = 0f
+                                lifecycleScope.launch {
+                                    val result = AppUpdateManager.downloadAndInstallApk(
+                                        context = this@MainActivity,
+                                        downloadUrl = updateInfo.downloadUrl,
+                                        onProgress = { p ->
+                                            _downloadProgress.value = p
+                                        }
+                                    )
+                                    _isDownloadingUpdate.value = false
+                                    result.onSuccess {
+                                        _pendingUpdate.value = null
+                                    }.onFailure { err ->
+                                        _downloadError.value = "Error al descargar o abrir instalador: ${err.localizedMessage ?: "Verifica tu conexión"}"
+                                    }
+                                }
+                            },
+                            isDownloading = isDownloading,
+                            downloadProgress = downloadProgress,
+                            downloadError = downloadError
+                        )
+                    }
+                }
             }
         }
     }
