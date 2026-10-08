@@ -225,11 +225,32 @@ object AppUpdateManager {
         }
     }
 
+    private var pendingInstallFile: File? = null
+
+    fun getPendingApkFile(context: Context): File? {
+        val updatesDir = File(context.cacheDir, "updates")
+        val apkFile = File(updatesDir, "AuraMusic_update.apk")
+        return if (apkFile.exists() && apkFile.length() > 0) apkFile else null
+    }
+
+    fun resumePendingInstallIfAllowed(context: Context): Boolean {
+        val fileToInstall = pendingInstallFile ?: getPendingApkFile(context) ?: return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                return false
+            }
+        }
+        pendingInstallFile = null
+        launchInstallIntent(context, fileToInstall)
+        return true
+    }
+
     fun installApk(context: Context, apkFile: File) {
         try {
             // Verificar permiso para orígenes desconocidos si es Android 8+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
+                    pendingInstallFile = apkFile
                     val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                         data = Uri.parse("package:${context.packageName}")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -239,6 +260,14 @@ object AppUpdateManager {
                 }
             }
 
+            launchInstallIntent(context, apkFile)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun launchInstallIntent(context: Context, apkFile: File) {
+        try {
             val apkUri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",

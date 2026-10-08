@@ -476,6 +476,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (AppUpdateManager.resumePendingInstallIfAllowed(this)) {
+            _pendingUpdate.value = null
+        }
         syncCurrentSongFromPlayer()
         if (_songs.value.isNotEmpty()) {
             var changed = false
