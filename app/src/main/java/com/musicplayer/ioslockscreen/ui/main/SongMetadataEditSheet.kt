@@ -24,9 +24,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.musicplayer.ioslockscreen.data.MusicMetadataSearchService
+import com.musicplayer.ioslockscreen.data.Mp3TagWriter
 import com.musicplayer.ioslockscreen.data.OnlineMetadataResult
 import com.musicplayer.ioslockscreen.model.Song
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -372,6 +376,46 @@ fun SongMetadataEditSheet(
                 )
             }
 
+            // Aviso de permiso para guardar en archivo MP3 (Bluetooth / Offline)
+            if (!Mp3TagWriter.canWriteMp3Files(context)) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                Mp3TagWriter.requestStorageManagementPermission(context)
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bluetooth,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "¿Quieres pasarla por Bluetooth con carátula?",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                                Text(
+                                    "Toca aquí para permitir acceso a archivos y grabar los datos directamente dentro del archivo MP3.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // BOTONES DE ACCIÓN
             item {
                 Row(
@@ -397,6 +441,23 @@ fun SongMetadataEditSheet(
                                 album = album.trim().ifBlank { song.album },
                                 albumArtUri = newArtUri
                             )
+                            if (Mp3TagWriter.canWriteMp3Files(context)) {
+                                coroutineScope.launch {
+                                    val writeResult = Mp3TagWriter.writeTagsToMp3(
+                                        context = context,
+                                        song = song,
+                                        title = updatedSong.title,
+                                        artist = updatedSong.artist,
+                                        album = updatedSong.album,
+                                        artworkUri = newArtUri
+                                    )
+                                    withContext(Dispatchers.Main) {
+                                        if (writeResult.isSuccess) {
+                                            Toast.makeText(context, "Metadatos y carátula incrustados en el archivo MP3", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
                             onSaveMetadata(updatedSong)
                         },
                         shape = RoundedCornerShape(12.dp),

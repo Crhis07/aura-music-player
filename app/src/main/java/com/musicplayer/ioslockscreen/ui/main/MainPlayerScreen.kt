@@ -52,6 +52,7 @@ import com.musicplayer.ioslockscreen.R
 import com.musicplayer.ioslockscreen.data.AppUpdateInfo
 import com.musicplayer.ioslockscreen.data.AppUpdateManager
 import com.musicplayer.ioslockscreen.data.LyricsHelper
+import com.musicplayer.ioslockscreen.data.Mp3TagWriter
 import com.musicplayer.ioslockscreen.data.MusicMetadataSearchService
 import com.musicplayer.ioslockscreen.data.MusicRepository
 import com.musicplayer.ioslockscreen.model.Album
@@ -388,6 +389,7 @@ fun MainPlayerScreen(
                         onOpenSleepTimerDialog = { showSleepTimerDialog = true },
                         onCancelSleepTimer = { SleepTimerManager.cancelTimer() },
                         onReloadLibrary = onReloadLibrary,
+                        songs = songs,
                         onTestLockScreen = {
                             val intent = Intent(context, LockScreenActivity::class.java)
                             context.startActivity(intent)
@@ -1351,6 +1353,7 @@ fun SettingsTabContent(
     onOpenSleepTimerDialog: () -> Unit,
     onCancelSleepTimer: () -> Unit,
     onReloadLibrary: () -> Unit = {},
+    songs: List<Song> = emptyList(),
     onTestLockScreen: () -> Unit,
     onTriggerUpdateDialog: (AppUpdateInfo) -> Unit = {}
 ) {
@@ -1359,6 +1362,10 @@ fun SettingsTabContent(
     val currentVersionCode = remember { AppUpdateManager.getCurrentVersionCode(context) }
     var isCheckingUpdate by remember { mutableStateOf(false) }
     var updateCheckStatus by remember { mutableStateOf<String?>(null) }
+    var isSyncingMp3s by remember { mutableStateOf(false) }
+    var syncCurrent by remember { mutableStateOf(0) }
+    var syncTotal by remember { mutableStateOf(0) }
+    var syncStatusTitle by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
     LazyColumn(
         modifier = Modifier
@@ -2190,7 +2197,131 @@ fun SettingsTabContent(
             }
         }
 
-        // SECCIÓN 6: ACERCA DE Y ACTUALIZACIONES
+        // SECCIÓN 6: GRABAR METADATOS Y CARÁTULAS EN ARCHIVOS FÍSICOS MP3 (PARA BLUETOOTH / OFFLINE)
+        item {
+            Text(
+                text = "Metadatos y Carátulas Físicas en Archivos MP3",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.SaveAlt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Grabar en Archivos MP3 para Bluetooth",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "Incrusta títulos, artistas y fotos de portada adentro de los archivos .mp3 físicos de tu teléfono.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Al transferir las canciones por Bluetooth o abrirlas en otro teléfono o computadora, se verán completas y con su carátula sin depender de internet.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (isSyncingMp3s) {
+                        Column {
+                            LinearProgressIndicator(
+                                progress = { if (syncTotal > 0) syncCurrent.toFloat() / syncTotal.toFloat() else 0f },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Grabando ($syncCurrent de $syncTotal): $syncStatusTitle",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                if (!Mp3TagWriter.canWriteMp3Files(context)) {
+                                    Mp3TagWriter.requestStorageManagementPermission(context)
+                                    Toast.makeText(
+                                        context,
+                                        "Activa 'Acceso a todos los archivos' para que Aura Music pueda modificar los archivos MP3",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                } else {
+                                    isSyncingMp3s = true
+                                    coroutineScope.launch {
+                                        val res = Mp3TagWriter.batchSyncAllSongs(context, songs) { cur, tot, title ->
+                                            syncCurrent = cur
+                                            syncTotal = tot
+                                            syncStatusTitle = title
+                                        }
+                                        isSyncingMp3s = false
+                                        Toast.makeText(
+                                            context,
+                                            "¡Listo! Se grabaron metadatos en ${res.successCount} canciones físicas.",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        onReloadLibrary()
+                                    }
+                                }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Incrustar Metadatos en Todos los MP3")
+                        }
+                    }
+                }
+            }
+        }
+
+        // SECCIÓN 7: ACERCA DE Y ACTUALIZACIONES
         item {
             Text(
                 text = "Acerca de la Aplicación y Actualizaciones",
