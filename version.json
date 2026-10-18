@@ -2,6 +2,6 @@
   "versionCode": 3,
   "versionName": "1.2.0",
   "downloadUrl": "https://github.com/Crhis07/aura-music-player/raw/main/releases/AuraMusic-v1.2.0.apk",
-  "changelog": "• Cola contextual inteligente: Ahora al reproducir desde 'Más Escuchadas', 'Recién Añadidas', 'Favoritas', Álbumes o Carpetas, siguiente/anterior (en app y auriculares) respetan el orden exacto de dicha lista.\n• Guardado automático de letras sincronizadas (.lrc) junto a las canciones para compartir vía Bluetooth y reproducir 100% offline.",
+  "changelog": "• Cola contextual inteligente: Al reproducir desde 'Más Escuchadas', 'Recién Añadidas', 'Favoritas', Álbumes o Carpetas, siguiente y anterior respetan el orden de la lista activa.\n• Navegación fluida con audífonos y pantalla de bloqueo.\n• Optimización de caché y descarga inteligente de letras.",
   "forceUpdate": false
 }

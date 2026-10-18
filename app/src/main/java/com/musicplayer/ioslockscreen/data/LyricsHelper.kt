@@ -173,28 +173,10 @@ object LyricsHelper {
         val parsed = parseLrc(clean)
         return if (parsed.isNotEmpty()) {
             File(cacheDir, "lyrics_${song.id}.lrc").writeText(clean)
-            trySaveCompanionLyrics(song, clean, true)
             LyricsResult(isSynced = true, lines = parsed, hasLyrics = true, source = "cache")
         } else {
             File(cacheDir, "lyrics_${song.id}.txt").writeText(clean)
-            trySaveCompanionLyrics(song, clean, false)
             LyricsResult(isSynced = false, lines = emptyList(), plainText = clean, hasLyrics = true, source = "cache")
-        }
-    }
-
-    private fun trySaveCompanionLyrics(song: Song, text: String, isSynced: Boolean) {
-        try {
-            if (song.filePath.isNotBlank()) {
-                val audioFile = File(song.filePath)
-                val parent = audioFile.parentFile
-                if (parent != null && parent.exists() && parent.canWrite()) {
-                    val ext = if (isSynced) ".lrc" else ".txt"
-                    val companionFile = File(parent, "${audioFile.nameWithoutExtension}$ext")
-                    companionFile.writeText(text)
-                }
-            }
-        } catch (_: Exception) {
-            // Si la carpeta requiere permisos de Scoped Storage, el guardado en caché interna garantiza la persistencia
         }
     }
 
@@ -248,14 +230,12 @@ object LyricsHelper {
                     val parsed = parseLrc(syncedLyrics)
                     if (parsed.isNotEmpty()) {
                         File(cacheDir, "lyrics_${song.id}.lrc").writeText(syncedLyrics)
-                        trySaveCompanionLyrics(song, syncedLyrics, true)
                         return LyricsResult(isSynced = true, lines = parsed, hasLyrics = true, source = "online")
                     }
                 }
 
                 if (plainLyrics.isNotEmpty()) {
                     File(cacheDir, "lyrics_${song.id}.txt").writeText(plainLyrics)
-                    trySaveCompanionLyrics(song, plainLyrics, false)
                     return LyricsResult(isSynced = false, lines = emptyList(), plainText = plainLyrics, hasLyrics = true, source = "online")
                 }
             }
