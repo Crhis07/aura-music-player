@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onToggleRepeat = { toggleRepeatMode() },
                         onToggleShuffle = { toggleShuffleMode() },
-                        onPlayPlaylist = { playlist, shuffle -> playPlaylist(playlist, shuffle) },
+                        onPlayPlaylist = { playlist, startIndex, shuffle -> playPlaylist(playlist, startIndex, shuffle) },
                         onTriggerUpdateDialog = { info ->
                             _downloadError.value = null
                             _pendingUpdate.value = info
@@ -387,18 +387,19 @@ class MainActivity : ComponentActivity() {
         _isShuffleEnabled.value = nextShuffle
     }
 
-    private fun playPlaylist(playlist: List<Song>, shuffle: Boolean = false) {
+    private fun playPlaylist(playlist: List<Song>, startIndex: Int = 0, shuffle: Boolean = false) {
         if (playlist.isEmpty()) return
         val player = MusicPlaybackService.instance?.player ?: controller ?: return
 
         val actualList = if (shuffle) playlist.shuffled() else playlist
-        val startSong = actualList.first()
+        val safeIndex = if (shuffle) 0 else startIndex.coerceIn(0, actualList.size - 1)
+        val startSong = actualList[safeIndex]
 
         repository.incrementPlayCount(startSong.id)
         _currentSong.value = startSong
 
         val mediaItems = actualList.map { it.toMediaItem() }
-        player.setMediaItems(mediaItems, 0, 0L)
+        player.setMediaItems(mediaItems, safeIndex, 0L)
         if (shuffle) {
             player.shuffleModeEnabled = true
             _isShuffleEnabled.value = true

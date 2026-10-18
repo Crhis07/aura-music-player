@@ -31,7 +31,7 @@ fun AlbumDetailBottomSheet(
     album: Album,
     currentSong: Song?,
     onSongSelected: (Song) -> Unit,
-    onPlayPlaylist: ((List<Song>, Boolean) -> Unit)? = null,
+    onPlayPlaylist: ((List<Song>, Int, Boolean) -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     ModalBottomSheet(
@@ -103,7 +103,7 @@ fun AlbumDetailBottomSheet(
                     onClick = {
                         if (album.songs.isNotEmpty()) {
                             if (onPlayPlaylist != null) {
-                                onPlayPlaylist(album.songs, false)
+                                onPlayPlaylist(album.songs, 0, false)
                             } else {
                                 onSongSelected(album.songs.first())
                             }
@@ -123,7 +123,7 @@ fun AlbumDetailBottomSheet(
                     onClick = {
                         if (album.songs.isNotEmpty()) {
                             if (onPlayPlaylist != null) {
-                                onPlayPlaylist(album.songs, true)
+                                onPlayPlaylist(album.songs, 0, true)
                             } else {
                                 onSongSelected(album.songs.shuffled().first())
                             }
@@ -170,7 +170,13 @@ fun AlbumDetailBottomSheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
-                            .clickable { onSongSelected(song) }
+                            .clickable {
+                                if (onPlayPlaylist != null) {
+                                    onPlayPlaylist(album.songs, index, false)
+                                } else {
+                                    onSongSelected(song)
+                                }
+                            }
                     ) {
                         Row(
                             modifier = Modifier

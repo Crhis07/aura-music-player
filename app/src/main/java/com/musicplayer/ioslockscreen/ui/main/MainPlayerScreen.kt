@@ -110,7 +110,7 @@ fun MainPlayerScreen(
     onPrevious: () -> Unit,
     onToggleRepeat: () -> Unit = {},
     onToggleShuffle: () -> Unit = {},
-    onPlayPlaylist: (List<Song>, Boolean) -> Unit = { _, _ -> },
+    onPlayPlaylist: (List<Song>, Int, Boolean) -> Unit = { _, _, _ -> },
     onTriggerUpdateDialog: (AppUpdateInfo) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -339,7 +339,8 @@ fun MainPlayerScreen(
                         onSearchChange = { searchQuery = it },
                         onRequestPermission = onRequestPermission,
                         onSongSelected = onSongSelected,
-                        onPlayAll = onPlayPlaylist,
+                        onPlayFromList = onPlayPlaylist,
+                        onPlayAll = { list, shuffle -> onPlayPlaylist(list, 0, shuffle) },
                         onEditSong = { songToEdit = it },
                         onToggleFavorite = onToggleFavorite
                     )
@@ -442,11 +443,12 @@ fun MainPlayerScreen(
             folder = folder,
             currentSong = currentSong,
             onSongSelected = { song ->
-                onSongSelected(song)
+                val idx = folder.songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                onPlayPlaylist(folder.songs, idx, false)
                 selectedFolderForDetail = null
             },
-            onPlayPlaylist = { songList, shuffle ->
-                onPlayPlaylist(songList, shuffle)
+            onPlayPlaylist = { songList, startIndex, shuffle ->
+                onPlayPlaylist(songList, startIndex, shuffle)
                 selectedFolderForDetail = null
             },
             onDismissRequest = { selectedFolderForDetail = null }
@@ -459,11 +461,12 @@ fun MainPlayerScreen(
             album = album,
             currentSong = currentSong,
             onSongSelected = { song ->
-                onSongSelected(song)
+                val idx = album.songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                onPlayPlaylist(album.songs, idx, false)
                 selectedAlbumForDetail = null
             },
-            onPlayPlaylist = { songList, shuffle ->
-                onPlayPlaylist(songList, shuffle)
+            onPlayPlaylist = { songList, startIndex, shuffle ->
+                onPlayPlaylist(songList, startIndex, shuffle)
                 selectedAlbumForDetail = null
             },
             onDismissRequest = { selectedAlbumForDetail = null }
@@ -482,11 +485,12 @@ fun MainPlayerScreen(
             album = artistAlbum,
             currentSong = currentSong,
             onSongSelected = { song ->
-                onSongSelected(song)
+                val idx = artistAlbum.songs.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                onPlayPlaylist(artistAlbum.songs, idx, false)
                 selectedArtistForDetail = null
             },
-            onPlayPlaylist = { songList, shuffle ->
-                onPlayPlaylist(songList, shuffle)
+            onPlayPlaylist = { songList, startIndex, shuffle ->
+                onPlayPlaylist(songList, startIndex, shuffle)
                 selectedArtistForDetail = null
             },
             onDismissRequest = { selectedArtistForDetail = null }
@@ -516,6 +520,7 @@ fun TracksTabContent(
     onSearchChange: (String) -> Unit,
     onRequestPermission: () -> Unit,
     onSongSelected: (Song) -> Unit,
+    onPlayFromList: (List<Song>, Int, Boolean) -> Unit = { _, _, _ -> },
     onPlayAll: (List<Song>, Boolean) -> Unit = { _, _ -> },
     onEditSong: (Song) -> Unit,
     onToggleFavorite: (Song) -> Unit
@@ -653,7 +658,7 @@ fun TracksTabContent(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = { onPlayAll(displayedSongs, false) },
+                            onClick = { onPlayFromList(displayedSongs, 0, false) },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp),
@@ -665,7 +670,7 @@ fun TracksTabContent(
                         }
 
                         FilledTonalButton(
-                            onClick = { onPlayAll(displayedSongs, true) },
+                            onClick = { onPlayFromList(displayedSongs, 0, true) },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(40.dp),
@@ -724,7 +729,7 @@ fun TracksTabContent(
                 isSelected = isSelected,
                 rankingIndex = if (activeSubFilter == TracksSubFilter.MOST_PLAYED) index + 1 else null,
                 showRecentlyAddedTag = activeSubFilter == TracksSubFilter.RECENTLY_ADDED,
-                onClick = { onSongSelected(song) },
+                onClick = { onPlayFromList(displayedSongs, index, false) },
                 onEditClick = { onEditSong(song) },
                 onToggleFavorite = { onToggleFavorite(song) }
             )

@@ -32,7 +32,7 @@ fun FolderDetailBottomSheet(
     folder: MusicFolder,
     currentSong: Song?,
     onSongSelected: (Song) -> Unit,
-    onPlayPlaylist: ((List<Song>, Boolean) -> Unit)? = null,
+    onPlayPlaylist: ((List<Song>, Int, Boolean) -> Unit)? = null,
     onDismissRequest: () -> Unit
 ) {
     ModalBottomSheet(
@@ -114,7 +114,7 @@ fun FolderDetailBottomSheet(
                     onClick = {
                         if (folder.songs.isNotEmpty()) {
                             if (onPlayPlaylist != null) {
-                                onPlayPlaylist(folder.songs, false)
+                                onPlayPlaylist(folder.songs, 0, false)
                             } else {
                                 onSongSelected(folder.songs.first())
                             }
@@ -132,7 +132,7 @@ fun FolderDetailBottomSheet(
                     onClick = {
                         if (folder.songs.isNotEmpty()) {
                             if (onPlayPlaylist != null) {
-                                onPlayPlaylist(folder.songs, true)
+                                onPlayPlaylist(folder.songs, 0, true)
                             } else {
                                 onSongSelected(folder.songs.shuffled().first())
                             }
@@ -161,7 +161,13 @@ fun FolderDetailBottomSheet(
                     val isCurrentlyPlaying = currentSong?.id == song.id
 
                     Surface(
-                        onClick = { onSongSelected(song) },
+                        onClick = {
+                            if (onPlayPlaylist != null) {
+                                onPlayPlaylist(folder.songs, index, false)
+                            } else {
+                                onSongSelected(song)
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
                         color = if (isCurrentlyPlaying) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else Color.Transparent,
                         modifier = Modifier.fillMaxWidth()
