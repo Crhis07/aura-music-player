@@ -1,7 +1,7 @@
 {
-  "versionCode": 5,
-  "versionName": "1.3.0",
-  "downloadUrl": "https://github.com/Crhis07/aura-music-player/raw/main/releases/AuraMusic-v1.3.0.apk",
-  "changelog": "• Grabación física de metadatos ID3v2.3 y carátulas directamente dentro de los archivos MP3 para compartir por Bluetooth 100% offline.\n• Nueva herramienta en Ajustes: 'Incrustar Metadatos en Todos los MP3' para actualizar todas tus canciones existentes con carátula en lote.\n• Permiso de acceso al almacenamiento para modificar archivos de música en Android 11+.",
+  "versionCode": 6,
+  "versionName": "1.3.1",
+  "downloadUrl": "https://github.com/Crhis07/aura-music-player/raw/main/releases/AuraMusic-v1.3.1.apk",
+  "changelog": "• Sincronización inteligente e incremental: Si ya guardaste metadatos, la herramienta en lote solo procesará canciones nuevas o modificadas (salta en milisegundos las que ya están al día).\n• Detección física instantánea de carátula y etiquetas en archivos MP3.\n• Consulta de actualizaciones en tiempo real sin retardo de CDN.\n• Guardado automático físico al editar o buscar carátulas en canciones individuales.",
   "forceUpdate": false
 }

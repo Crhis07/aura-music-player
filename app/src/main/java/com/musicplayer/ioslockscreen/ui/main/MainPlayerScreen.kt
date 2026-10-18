@@ -2300,11 +2300,14 @@ fun SettingsTabContent(
                                             syncStatusTitle = title
                                         }
                                         isSyncingMp3s = false
-                                        Toast.makeText(
-                                            context,
-                                            "¡Listo! Se grabaron metadatos en ${res.successCount} canciones físicas.",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                        val message = if (res.totalProcessed == 0) {
+                                            "¡Todo al día! Las ${res.skippedAlreadySyncedCount} canciones ya tienen sus metadatos y carátula incrustados."
+                                        } else if (res.skippedAlreadySyncedCount > 0) {
+                                            "¡Listo! Se incrustaron metadatos en ${res.successCount} canciones pendientes (${res.skippedAlreadySyncedCount} ya estaban al día)."
+                                        } else {
+                                            "¡Listo! Se grabaron metadatos en ${res.successCount} canciones físicas."
+                                        }
+                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                         onReloadLibrary()
                                     }
                                 }

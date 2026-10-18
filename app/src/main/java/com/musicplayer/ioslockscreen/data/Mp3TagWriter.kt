@@ -27,7 +27,8 @@ data class BatchSyncResult(
     val totalProcessed: Int,
     val successCount: Int,
     val failedCount: Int,
-    val skippedCount: Int
+    val skippedAlreadySyncedCount: Int = 0,
+    val skippedNonMp3Count: Int = 0
 )
 
 object Mp3TagWriter {
@@ -134,6 +135,17 @@ object Mp3TagWriter {
                     null
                 )
 
+                // 6. Registrar en caché de sincronización para no re-procesar innecesariamente
+                markSongAsSynced(
+                    context = context,
+                    songId = song.id,
+                    lastModified = originalFile.lastModified(),
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    artworkUri = artworkUri
+                )
+
                 Result.success(originalFile)
             } finally {
                 if (tempFile.exists()) {
@@ -146,22 +158,131 @@ object Mp3TagWriter {
         }
     }
 
+    private const val SYNC_PREFS_NAME = "mp3_synced_tags_prefs"
+
+    fun markSongAsSynced(
+        context: Context,
+        songId: Long,
+        lastModified: Long,
+        title: String,
+        artist: String,
+        album: String,
+        artworkUri: Uri?
+    ) {
+        try {
+            val prefs = context.getSharedPreferences(SYNC_PREFS_NAME, Context.MODE_PRIVATE)
+            val signature = generateSignature(title, artist, album, artworkUri, lastModified)
+            prefs.edit().putString("sync_sig_$songId", signature).apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun isSongAlreadySynced(
+        context: Context,
+        song: Song,
+        originalFile: File
+    ): Boolean {
+        if (!originalFile.exists()) return false
+        val prefs = context.getSharedPreferences(SYNC_PREFS_NAME, Context.MODE_PRIVATE)
+        val savedSig = prefs.getString("sync_sig_${song.id}", null)
+        val currentSig = generateSignature(song.title, song.artist, song.album, song.albumArtUri, originalFile.lastModified())
+        return savedSig != null && savedSig == currentSig
+    }
+
     /**
-     * Sincroniza en lote todas las canciones existentes de la biblioteca grabando sus metadatos y carátulas
+     * Comprueba directamente si el archivo MP3 físico ya contiene los mismos metadatos y carátula
+     */
+    fun isPhysicalMp3AlreadyTagged(song: Song, originalFile: File): Boolean {
+        return try {
+            val mp3file = Mp3File(originalFile.absolutePath)
+            if (!mp3file.hasId3v2Tag()) return false
+            val tag = mp3file.id3v2Tag
+            val titleMatch = (tag.title ?: "").trim().equals(song.title.trim(), ignoreCase = true)
+            val artistMatch = (tag.artist ?: "").trim().equals(song.artist.trim(), ignoreCase = true)
+            val albumMatch = (tag.album ?: "").trim().equals(song.album.trim(), ignoreCase = true)
+            val artMatch = if (song.albumArtUri != null) {
+                tag.albumImage != null && tag.albumImage.isNotEmpty()
+            } else {
+                true
+            }
+            titleMatch && artistMatch && albumMatch && artMatch
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun generateSignature(
+        title: String,
+        artist: String,
+        album: String,
+        artworkUri: Uri?,
+        lastModified: Long
+    ): String {
+        return "${title.trim()}|${artist.trim()}|${album.trim()}|${artworkUri?.toString() ?: ""}|$lastModified"
+    }
+
+    /**
+     * Sincroniza en lote todas las canciones existentes de la biblioteca grabando sus metadatos y carátulas.
+     * Solo procesa canciones nuevas o con datos modificados, saltándose las que ya están al día.
      */
     suspend fun batchSyncAllSongs(
         context: Context,
         songs: List<Song>,
+        forceResyncAll: Boolean = false,
         onProgress: (current: Int, total: Int, songTitle: String) -> Unit
     ): BatchSyncResult = withContext(Dispatchers.IO) {
         var success = 0
         var failed = 0
-        var skipped = 0
+        var alreadySynced = 0
 
         val eligibleSongs = songs.filter { it.filePath.endsWith(".mp3", ignoreCase = true) }
-        val total = eligibleSongs.size
+        val nonMp3Count = songs.size - eligibleSongs.size
 
-        eligibleSongs.forEachIndexed { index, song ->
+        val songsToProcess = if (forceResyncAll) {
+            eligibleSongs
+        } else {
+            val pending = mutableListOf<Song>()
+            for (song in eligibleSongs) {
+                val file = File(song.filePath)
+                if (!file.exists()) {
+                    failed++
+                    continue
+                }
+                if (isSongAlreadySynced(context, song, file)) {
+                    alreadySynced++
+                } else if (isPhysicalMp3AlreadyTagged(song, file)) {
+                    // Recordar en preferencias para que futuras comprobaciones sean ultra-rápidas
+                    markSongAsSynced(
+                        context,
+                        song.id,
+                        file.lastModified(),
+                        song.title,
+                        song.artist,
+                        song.album,
+                        song.albumArtUri
+                    )
+                    alreadySynced++
+                } else {
+                    pending.add(song)
+                }
+            }
+            pending
+        }
+
+        val total = songsToProcess.size
+
+        if (total == 0) {
+            return@withContext BatchSyncResult(
+                totalProcessed = 0,
+                successCount = 0,
+                failedCount = failed,
+                skippedAlreadySyncedCount = alreadySynced,
+                skippedNonMp3Count = nonMp3Count
+            )
+        }
+
+        songsToProcess.forEachIndexed { index, song ->
             withContext(Dispatchers.Main) {
                 onProgress(index + 1, total, song.title)
             }
@@ -182,12 +303,12 @@ object Mp3TagWriter {
             }
         }
 
-        skipped = songs.size - eligibleSongs.size
         BatchSyncResult(
-            totalProcessed = eligibleSongs.size,
+            totalProcessed = total,
             successCount = success,
             failedCount = failed,
-            skippedCount = skipped
+            skippedAlreadySyncedCount = alreadySynced,
+            skippedNonMp3Count = nonMp3Count
         )
     }
 

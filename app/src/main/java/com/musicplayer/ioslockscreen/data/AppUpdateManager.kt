@@ -29,9 +29,54 @@ object AppUpdateManager {
     private const val PREFS_NAME = "app_update_prefs"
     private const val KEY_DISMISSED_VERSION = "dismissed_version_code"
     
-    // URL directa al archivo version.json en la rama principal de GitHub
+    // GitHub API (evita el caché de 5 minutos de Fastly CDN en raw.githubusercontent)
+    private const val GITHUB_API_URL =
+        "https://api.github.com/repos/Crhis07/aura-music-player/contents/version.json"
     private const val VERSION_JSON_URL =
         "https://raw.githubusercontent.com/Crhis07/aura-music-player/main/version.json"
+
+    private fun fetchVersionJson(): String {
+        // 1. Intentar con GitHub API (inmediato, sin CDN cache)
+        try {
+            val apiUrl = URL(GITHUB_API_URL)
+            val apiConn = (apiUrl.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 5000
+                readTimeout = 5000
+                setRequestProperty("Accept", "application/vnd.github.v3+json")
+                setRequestProperty("User-Agent", "AuraMusicPlayer/2.0")
+            }
+            if (apiConn.responseCode == HttpURLConnection.HTTP_OK) {
+                val responseText = apiConn.inputStream.bufferedReader().use { it.readText() }
+                val apiObj = JSONObject(responseText)
+                val base64Content = apiObj.optString("content", "").replace("\n", "").replace("\r", "")
+                if (base64Content.isNotBlank()) {
+                    val decodedBytes = android.util.Base64.decode(base64Content, android.util.Base64.DEFAULT)
+                    val jsonStr = String(decodedBytes, Charsets.UTF_8)
+                    if (jsonStr.contains("versionCode")) {
+                        return jsonStr
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Continuar con fallback
+        }
+
+        // 2. Fallback a URL Raw directa
+        val rawUrl = URL("$VERSION_JSON_URL?t=${System.currentTimeMillis()}")
+        val rawConn = (rawUrl.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 7000
+            readTimeout = 7000
+            setRequestProperty("Cache-Control", "no-cache, no-store")
+            setRequestProperty("Pragma", "no-cache")
+            setRequestProperty("User-Agent", "AuraMusicPlayer/2.0")
+        }
+        if (rawConn.responseCode != HttpURLConnection.HTTP_OK) {
+            throw Exception("Servidor respondió con código ${rawConn.responseCode}")
+        }
+        return rawConn.inputStream.bufferedReader().use { it.readText() }
+    }
 
     fun getCurrentVersionCode(context: Context): Int {
         return try {
@@ -98,21 +143,7 @@ object AppUpdateManager {
                 }
             }
 
-            val url = URL("$VERSION_JSON_URL?t=${System.currentTimeMillis()}")
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 7000
-                readTimeout = 7000
-                setRequestProperty("Cache-Control", "no-cache, no-store")
-                setRequestProperty("Pragma", "no-cache")
-                setRequestProperty("User-Agent", "AuraMusicPlayer/2.0")
-            }
-
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext Result.failure(Exception("Servidor respondió con código ${connection.responseCode}"))
-            }
-
-            val rawJson = connection.inputStream.bufferedReader().use { it.readText() }
+            val rawJson = fetchVersionJson()
             val json = JSONObject(rawJson)
 
             val remoteCode = json.optInt("versionCode", 0)
