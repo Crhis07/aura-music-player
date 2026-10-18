@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppUpdateManager.cleanPendingApk(this)
         repository = MusicRepository(this)
 
         checkAndRequestPermissions()

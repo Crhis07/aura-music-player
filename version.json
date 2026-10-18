@@ -1,7 +1,7 @@
 {
-  "versionCode": 3,
-  "versionName": "1.2.0",
-  "downloadUrl": "https://github.com/Crhis07/aura-music-player/raw/main/releases/AuraMusic-v1.2.0.apk",
-  "changelog": "• Cola contextual inteligente: Al reproducir desde 'Más Escuchadas', 'Recién Añadidas', 'Favoritas', Álbumes o Carpetas, siguiente y anterior respetan el orden de la lista activa.\n• Navegación fluida con audífonos y pantalla de bloqueo.\n• Optimización de caché y descarga inteligente de letras.",
+  "versionCode": 4,
+  "versionName": "1.2.1",
+  "downloadUrl": "https://github.com/Crhis07/aura-music-player/raw/main/releases/AuraMusic-v1.2.1.apk",
+  "changelog": "• Corrección crítica: Eliminación del bucle de instalación tras actualizar.\n• Cola contextual inteligente por panel y lista (más escuchadas, recientes, álbumes).\n• Limpieza automática de instaladores temporales.",
   "forceUpdate": false
 }

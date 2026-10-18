@@ -227,14 +227,19 @@ object AppUpdateManager {
 
     private var pendingInstallFile: File? = null
 
-    fun getPendingApkFile(context: Context): File? {
-        val updatesDir = File(context.cacheDir, "updates")
-        val apkFile = File(updatesDir, "AuraMusic_update.apk")
-        return if (apkFile.exists() && apkFile.length() > 0) apkFile else null
+    fun cleanPendingApk(context: Context) {
+        try {
+            val updatesDir = File(context.cacheDir, "updates")
+            if (updatesDir.exists()) {
+                updatesDir.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun resumePendingInstallIfAllowed(context: Context): Boolean {
-        val fileToInstall = pendingInstallFile ?: getPendingApkFile(context) ?: return false
+        val fileToInstall = pendingInstallFile ?: return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!context.packageManager.canRequestPackageInstalls()) {
                 return false
